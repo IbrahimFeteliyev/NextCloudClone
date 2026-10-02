@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env first}
+      POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env first}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  minio:
+    image: atlas-minio:local
+    build:
+      context: .
+      dockerfile: minio.Dockerfile
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Copy .env.example to .env first}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Copy .env.example to .env first}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+  onlyoffice:
+    profiles: [office]
+    image: onlyoffice/documentserver:9.4.0.1
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${OnlyOffice__JwtSecret:-}
+      JWT_HEADER: Authorization
+      JWT_IN_BODY: "true"
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+    ports:
+      - "127.0.0.1:${ONLYOFFICE_PORT:-8082}:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_lib:/var/lib/onlyoffice
+      - onlyoffice_logs:/var/log/onlyoffice
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/healthcheck | grep -q true"]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 20
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  minio_data:
+  onlyoffice_data:
+  onlyoffice_lib:
+  onlyoffice_logs:

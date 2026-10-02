@@ -1,0 +1,15 @@
+node_modules/
+dist/
+bin/
+obj/
+.env
+.env.local
+appsettings.Local.json
+.cache/
+.tools/
+*.user
+*.log
+*.tsbuildinfo
+test-results/
+# Generated PDF.js assets; copied from the installed package for dev/build.
+frontend/public/pdfjs/
