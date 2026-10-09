@@ -9,8 +9,22 @@ public class ObjectStorage(IMinioClient client, IConfiguration config)
         if (!await client.BucketExistsAsync(new BucketExistsArgs().WithBucket(bucket)))
             await client.MakeBucketAsync(new MakeBucketArgs().WithBucket(bucket));
     }
-    public virtual Task Put(string key, Stream stream, long size, string contentType) =>
-        client.PutObjectAsync(new PutObjectArgs().WithBucket(bucket).WithObject(key).WithStreamData(stream).WithObjectSize(size).WithContentType(contentType));
+    public virtual async Task Put(string key, Stream stream, long size, string contentType, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // MinIO 6.0.4 rejects an explicit zero-size stream. Its unknown-length
+            // stream path (-1) correctly stores an empty object without adding bytes.
+            await client.PutObjectAsync(new PutObjectArgs().WithBucket(bucket).WithObject(key).WithStreamData(stream)
+                .WithObjectSize(size == 0 ? -1 : size).WithContentType(contentType), cancellationToken);
+        }
+        catch
+        {
+            // SDK multipart transfers can leave temporary parts when interrupted.
+            try { await client.RemoveIncompleteUploadAsync(new RemoveIncompleteUploadArgs().WithBucket(bucket).WithObject(key)); } catch { /* Preserve the transfer error. */ }
+            throw;
+        }
+    }
     public virtual async Task<MemoryStream> Get(string key)
     {
         var result = new MemoryStream();

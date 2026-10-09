@@ -2,6 +2,8 @@
 
 A small corporate document management demo with its own Atlas identity. React + TypeScript + Vite + Tailwind on the frontend; ASP.NET Core, EF Core, PostgreSQL, JWT, and MinIO on the backend. PostgreSQL stores metadata and hashed passwords. MinIO stores the actual file bytes under generated object keys.
 
+TXT/LOG, JSON, XML, SQL, JS/TS, CSS/HTML, C# and Python open in CodeMirror 6 with syntax highlighting, permission-based editing and versioned saves. Markdown has rendered preview and source editing. The editor includes a compact responsive Find/Replace panel and JSON formatting. See [editor implementation, packages, changed files and tests](docs/code-editor.md). Uploads retain per-file progress, Cancel and Retry; see [upload implementation](docs/text-editor-uploads.md).
+
 ## Quick start
 
 Install .NET 10 SDK, Node.js 22.12+ (Node 24 recommended), and Docker Desktop with Linux containers. Start Docker Desktop first. Commands below run from this repository unless a `cd` is shown. `cp` also works in PowerShell as a Copy-Item alias.
@@ -72,7 +74,8 @@ Sign out through the avatar menu. JWTs are stored in sessionStorage and expire a
 
 ## Interface
 
-- My Files, Shared With Me, Recent, and Audit Logs in a responsive sidebar.
+- My Files, Favorites, Shared With Me, Shared by me, Recent, and Audit Logs in a responsive sidebar. Favorites are personal and persist in PostgreSQL; use an item's three-dot menu to add/remove one. Shared by me lists owned files/folders with active direct sharing. READ checks apply to both views, and opening a folder shows its contents normally.
+- Workspace capacity displays used bytes without a fixed quota or a percentage bar. See [Favorites and outgoing shares](docs/favorites.md).
 - Workspace search (`Ctrl/Cmd + K`), breadcrumbs, folder shortcuts, file-type filters, sorting, list/grid views, and selection.
 - Name, Owner, Shared With, Modified, Size, and Actions columns. Mobile tables scroll within their panel.
 - Folder/file icons, permission badges, teammate avatars, and a three-dot context menu.
@@ -93,7 +96,7 @@ Permission checks live in `backend/Permissions/PermissionService.cs`. Every oper
 | Bit | Permission | Behavior |
 | --- | --- | --- |
 | 1 | READ | Browse folders, view metadata and access lists, download files |
-| 2 | WRITE | Upload, create folders, rename, edit Office content; owners can also move items |
+| 2 | WRITE | Upload, create folders, rename, edit supported text/code and Office content; owners can also move items |
 | 4 | DELETE | Permanently delete files/folders |
 | 8 | SHARE | Set or remove another user's direct permission |
 
@@ -177,11 +180,11 @@ docker compose config --quiet
 
 The backend tests use isolated in-memory SQLite databases to verify inheritance, overrides, ownership, read-only denial, WRITE upgrades, delegation limits, shared-view navigation, duplicate names, and move-cycle prevention. The production backend always uses PostgreSQL; SQLite is only a test dependency.
 
-Verified: frontend and backend builds, 60 backend tests, 33 frontend tests, migration/model consistency, Compose configuration, desktop/mobile browser checks, actual PostgreSQL migration and seeding, and the full PostgreSQL/MinIO smoke test. Preview streaming and access controls also have 22 live HTTP checks. Browser sign-in from 127.0.0.1 is verified. Docker Desktop is installed under the user profile; start its engine before starting the infrastructure. PostgreSQL uses host port 5433 to avoid the existing local service on 5432.
+Verified: frontend and backend builds, 80 backend tests, 71 frontend tests, migration/model consistency, Compose configuration, desktop/mobile browser checks, actual PostgreSQL migration and seeding, and the full PostgreSQL/MinIO smoke test. Expanded code editing has 55 live HTTP checks; preview streaming/access controls have 22, text editing/upload cancellation 19, and ONLYOFFICE 16. Browser sign-in from 127.0.0.1 is verified. Docker Desktop is installed under the user profile; start its engine before starting the infrastructure. PostgreSQL uses host port 5433 to avoid the existing local service on 5432.
 
 ## MVP boundaries and troubleshooting
 
-- Local demo only: no production identity provider, server-side logout revocation, public links, recovery/trash, antivirus scanning, or enforced storage quota. Office saves have immutable version snapshots; restoring a version and the ONLYOFFICE history panel are not implemented. The 10 GB sidebar meter is a visual reference capacity, not a billing plan or quota.
+- Local demo only: no production identity provider, server-side logout revocation, public links, recovery/trash, antivirus scanning, or enforced storage quota. Office saves have immutable version snapshots; restoring a version and the ONLYOFFICE history panel are not implemented. The sidebar shows actual usage without a capacity limit.
 - Maximum 100 MB per file. Downloads buffer the file in memory. Empty files are allowed. Upload failures are shown individually; successful files in a multi-file upload are retained.
 - Deletion removes metadata transactionally before removing objects. If MinIO is unavailable during cleanup, unused objects can remain; the API logs the object key. PostgreSQL and MinIO do not share a transaction. A crash during initial seed can similarly leave unused seed objects.
 - The explorer favors a simple permission-filtered implementation over large-scale query optimization. Recent returns up to 30 modified readable files. Audit displays up to 200 accessible events from the latest 500 events; events on deleted resources are visible to their actor and Admin.
@@ -197,5 +200,5 @@ DOCX, XLSX, and PPTX now open in the browser with signed permission-based view/e
 
 ## File previews
 
-File names now open an in-app preview in both list and grid views. Images, videos, PDF, Markdown, TXT/LOG and CSV use dedicated viewers; Office documents retain ONLYOFFICE. Unsupported formats show metadata and an explicit Download action. READ checks apply to each inline/range request and MinIO remains private. See [the preview guide](docs/file-preview.md) for endpoints, security, demo limits, changed files and test instructions.
+File names open an in-app preview in both list and grid views. Images, videos, PDF and CSV use their dedicated viewers; supported text/code uses CodeMirror, Markdown adds rendered preview, and Office documents retain ONLYOFFICE. Unsupported formats show metadata and an explicit Download action. READ checks apply to each inline/range request and MinIO remains private. See [the preview guide](docs/file-preview.md) for endpoints, security, demo limits, changed files and test instructions.
 

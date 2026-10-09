@@ -15,6 +15,7 @@ public class PermissionService(AppDbContext db)
         while (cursor is Guid id && visited.Add(id))
         {
             var folder = await db.Folders.FindAsync(id) ?? throw new ApiException(404, "Folder not found.");
+            if (folder.DeletedAt != null) throw new ApiException(404, "Folder is in Trash.");
             if (folder.OwnerId == userId) return Access.All;
             var grant = await db.FolderPermissions.SingleOrDefaultAsync(x => x.FolderId == id && x.UserId == userId);
             if (grant != null) return grant.Access;
@@ -25,6 +26,7 @@ public class PermissionService(AppDbContext db)
     public async Task<Access> FileAccess(Guid userId, Guid fileId)
     {
         var file = await db.Files.FindAsync(fileId) ?? throw new ApiException(404, "File not found.");
+        if (file.DeletedAt != null) throw new ApiException(404, "File is in Trash.");
         if (file.OwnerId == userId) return Access.All;
         var grant = await db.FilePermissions.SingleOrDefaultAsync(x => x.FileId == fileId && x.UserId == userId);
         return grant?.Access ?? await FolderAccess(userId, file.ParentFolderId);

@@ -4,9 +4,9 @@ namespace Atlas.Api.Services;
 public sealed class DocumentLocks
 {
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> gates = new();
-    public async Task<IDisposable> Enter(Guid file)
+    public async Task<IDisposable> Enter(Guid file, CancellationToken cancellationToken = default)
     {
-        var gate = gates.GetOrAdd(file, _ => new(1, 1)); await gate.WaitAsync(); return new Lease(gate);
+        var gate = gates.GetOrAdd(file, _ => new(1, 1)); await gate.WaitAsync(cancellationToken); return new Lease(gate);
     }
     private sealed class Lease(SemaphoreSlim gate) : IDisposable { public void Dispose() => gate.Release(); }
 }

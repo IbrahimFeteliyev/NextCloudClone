@@ -73,6 +73,9 @@ namespace backend.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -95,6 +98,9 @@ namespace backend.Data.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("TrashRootId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -110,9 +116,43 @@ namespace backend.Data.Migrations
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("ParentFolderId", "Name")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
 
                     b.ToTable("Files", (string)null);
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.Favorite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId");
+
+                    b.HasIndex("FolderId");
+
+                    b.HasIndex("UserId", "FileId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "FolderId")
+                        .IsUnique();
+
+                    b.ToTable("Favorites", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Favorites_Resource", "(\"FolderId\" IS NULL) <> (\"FileId\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.FilePermission", b =>
@@ -194,6 +234,9 @@ namespace backend.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsRoot")
                         .HasColumnType("boolean");
 
@@ -208,6 +251,9 @@ namespace backend.Data.Migrations
                     b.Property<Guid?>("ParentFolderId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("TrashRootId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -218,7 +264,8 @@ namespace backend.Data.Migrations
                         .HasFilter("\"IsRoot\" = true");
 
                     b.HasIndex("ParentFolderId", "Name")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
 
                     b.ToTable("Folders");
                 });
@@ -266,6 +313,21 @@ namespace backend.Data.Migrations
                     b.ToTable("OfficeParticipants");
                 });
 
+            modelBuilder.Entity("Atlas.Api.Entities.OfficeSave", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId");
+
+                    b.ToTable("OfficeSaves");
+                });
+
             modelBuilder.Entity("Atlas.Api.Entities.OfficeSession", b =>
                 {
                     b.Property<string>("Key")
@@ -280,6 +342,10 @@ namespace backend.Data.Migrations
 
                     b.Property<Guid>("FileId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("InitialObjectKey")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("InitialVersion")
                         .HasColumnType("integer");
@@ -376,6 +442,31 @@ namespace backend.Data.Migrations
                     b.Navigation("ParentFolder");
                 });
 
+            modelBuilder.Entity("Atlas.Api.Entities.Favorite", b =>
+                {
+                    b.HasOne("Atlas.Api.Entities.Document", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Atlas.Api.Entities.Folder", "Folder")
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Atlas.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
+
+                    b.Navigation("Folder");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Atlas.Api.Entities.FilePermission", b =>
                 {
                     b.HasOne("Atlas.Api.Entities.Document", "File")
@@ -468,6 +559,17 @@ namespace backend.Data.Migrations
                     b.Navigation("Session");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.OfficeSave", b =>
+                {
+                    b.HasOne("Atlas.Api.Entities.Document", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.OfficeSession", b =>

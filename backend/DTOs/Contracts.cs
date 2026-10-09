@@ -7,8 +7,9 @@ public record NameRequest([Required, StringLength(255, MinimumLength = 1)] strin
 public record CreateFolderRequest([Required, StringLength(255, MinimumLength = 1)] string Name, Guid ParentFolderId);
 public record MoveRequest(Guid ParentFolderId);
 public record ShareRequest(Guid UserId, Access Permissions);
+public record FavoriteRequest(bool IsFavorite);
 public record ShareDto(Guid UserId, string Name, string Email, Access Permissions, bool Inherited, string Source);
 public record ResourceDto(Guid Id, string Name, string Type, Guid OwnerId, string Owner, string OwnerEmail,
-    DateTime Modified, long Size, Guid? ParentFolderId, Access Permissions, IReadOnlyList<ShareDto> SharedWith, string? ContentType = null);
+    DateTime Modified, long Size, Guid? ParentFolderId, Access Permissions, IReadOnlyList<ShareDto> SharedWith, string? ContentType = null, bool IsFavorite = false);
 public record BreadcrumbDto(Guid Id, string Name);
-public record ExplorerDto(Guid? FolderId, Access Permissions, IReadOnlyList<BreadcrumbDto> Breadcrumbs, IReadOnlyList<ResourceDto> Items);
+public record ExplorerDto(Guid? FolderId, Access Permissions, IReadOnlyList<BreadcrumbDto> Breadcrumbs, IReadOnlyList<ResourceDto> Items, int Total = 0, int Page = 1, int PageSize = 20);

@@ -1,6 +1,6 @@
-import { ApiError, getToken } from '../../api';
-export type PreviewTicket = { id: string; name: string; contentType: string; size: number; version: number; contentPath: string; expiresAt: string };
-export const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:5050/api').replace(/\/$/, '');
+import { ApiError, getToken, apiBase } from '../../api';
+export { apiBase } from '../../api';
+export type PreviewTicket = { id: string; name: string; contentType: string; size: number; version: number; contentPath: string; expiresAt: string; permissions?: number; textEditLimit?: number };
 export const contentUrl = (ticket: PreviewTicket) => `${apiBase}${ticket.contentPath}`;
 export async function readContent(ticket: PreviewTicket, signal: AbortSignal, limit?: number): Promise<Blob> {
   const headers = new Headers({ Authorization: `Bearer ${getToken()}` });

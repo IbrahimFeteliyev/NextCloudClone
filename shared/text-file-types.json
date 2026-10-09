@@ -1,0 +1,13 @@
+[
+  { "extensions": ["txt", "log"], "language": "plain", "label": "Plain Text", "mime": "text/plain", "aliases": [] },
+  { "extensions": ["json"], "language": "json", "label": "JSON", "mime": "application/json", "aliases": ["text/json"] },
+  { "extensions": ["xml"], "language": "xml", "label": "XML", "mime": "application/xml", "aliases": ["text/xml"] },
+  { "extensions": ["md", "markdown"], "language": "markdown", "label": "Markdown", "mime": "text/markdown", "aliases": ["text/x-markdown"], "renderedPreview": true },
+  { "extensions": ["sql"], "language": "sql", "label": "SQL", "mime": "application/sql", "aliases": ["text/x-sql"] },
+  { "extensions": ["js"], "language": "javascript", "label": "JavaScript", "mime": "text/javascript", "aliases": ["application/javascript", "application/x-javascript", "text/x-javascript"] },
+  { "extensions": ["ts"], "language": "typescript", "label": "TypeScript", "mime": "text/typescript", "aliases": ["application/typescript", "text/x-typescript", "video/mp2t"] },
+  { "extensions": ["css"], "language": "css", "label": "CSS", "mime": "text/css", "aliases": [] },
+  { "extensions": ["html"], "language": "html", "label": "HTML", "mime": "text/html", "aliases": [] },
+  { "extensions": ["cs"], "language": "csharp", "label": "C#", "mime": "text/x-csharp", "aliases": ["application/x-csharp", "text/x-csharp-source"] },
+  { "extensions": ["py"], "language": "python", "label": "Python", "mime": "text/x-python", "aliases": ["application/x-python", "application/x-python-code", "text/x-python-script"] }
+]

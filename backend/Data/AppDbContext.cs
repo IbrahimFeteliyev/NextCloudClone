@@ -14,6 +14,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FolderPermission> FolderPermissions => Set<FolderPermission>();
     public DbSet<FilePermission> FilePermissions => Set<FilePermission>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Favorite> Favorites => Set<Favorite>();
+    public DbSet<OfficeSave> OfficeSaves => Set<OfficeSave>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<User>().HasIndex(x => x.Email).IsUnique();
@@ -23,15 +25,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Folder>().Property(x => x.Name).HasMaxLength(255);
         b.Entity<Folder>().HasOne(x => x.ParentFolder).WithMany().HasForeignKey(x => x.ParentFolderId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Folder>().HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
-        b.Entity<Folder>().HasIndex(x => new { x.ParentFolderId, x.Name }).IsUnique();
+        b.Entity<Folder>().HasQueryFilter(x => x.DeletedAt == null);
+        b.Entity<Folder>().HasIndex(x => new { x.ParentFolderId, x.Name }).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
         b.Entity<Folder>().HasIndex(x => x.OwnerId).IsUnique().HasFilter("\"IsRoot\" = true");
         b.Entity<Document>().ToTable("Files");
         b.Entity<Document>().Property(x => x.Name).HasMaxLength(255);
         b.Entity<Document>().HasOne(x => x.ParentFolder).WithMany().HasForeignKey(x => x.ParentFolderId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Document>().HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
-        b.Entity<Document>().HasIndex(x => new { x.ParentFolderId, x.Name }).IsUnique();
+        b.Entity<Document>().HasQueryFilter(x => x.DeletedAt == null);
+        b.Entity<Document>().HasIndex(x => new { x.ParentFolderId, x.Name }).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
         b.Entity<Document>().HasIndex(x => x.ObjectKey).IsUnique();
         b.Entity<Document>().Property(x => x.Version).IsConcurrencyToken();
+        b.Entity<OfficeSave>().HasKey(x => x.Id);
+        b.Entity<OfficeSave>().HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<FileVersion>().HasIndex(x => new { x.FileId, x.Number }).IsUnique();
         b.Entity<FileVersion>().HasIndex(x => new { x.FileId, x.SaveId }).IsUnique();
         b.Entity<FileVersion>().HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
@@ -48,6 +54,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<FilePermission>().HasIndex(x => new { x.FileId, x.UserId }).IsUnique();
         b.Entity<FilePermission>().HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AuditLog>().HasIndex(x => x.Timestamp);
+        b.Entity<Favorite>().ToTable("Favorites", table => table.HasCheckConstraint("CK_Favorites_Resource", "(\"FolderId\" IS NULL) <> (\"FileId\" IS NULL)"));
+        b.Entity<Favorite>().HasIndex(x => new { x.UserId, x.FolderId }).IsUnique();
+        b.Entity<Favorite>().HasIndex(x => new { x.UserId, x.FileId }).IsUnique();
+        b.Entity<Favorite>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Favorite>().HasOne(x => x.Folder).WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Favorite>().HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AuditLog>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

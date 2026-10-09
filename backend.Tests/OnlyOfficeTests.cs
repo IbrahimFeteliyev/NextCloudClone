@@ -68,6 +68,67 @@ public sealed class OnlyOfficeTests : IDisposable
         var signed = tokens.Sign(new { key = Key(config), status, url, filetype = "xlsx", users = new[] { actor.Id.ToString() } }, DateTime.UtcNow.AddMinutes(5));
         return Service(owner).Callback(file.Id, AccessToken(config, "callbackUrl"), Json(new { token = signed }), null);
     }
+    [Fact] public async Task Delete_snapshot_requires_delete_permission_and_keeps_current_content()
+    {
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => versions.DeleteSnapshot(reader.Id, file.Id, 1, locks, default))).Status);
+        await versions.DeleteSnapshot(owner.Id, file.Id, 1, locks, default);
+        Assert.Empty(await db.FileVersions.ToListAsync()); Assert.True(storage.Objects.ContainsKey(file.ObjectKey)); Assert.Equal(1, file.Version);
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => versions.DeleteSnapshot(owner.Id, file.Id, 1, locks, default))).Status);
+    }
+    [Fact] public async Task Delete_old_snapshot_removes_only_unreferenced_storage()
+    {
+        var oldKey = file.ObjectKey;
+        using var edit = new MemoryStream(Encoding.UTF8.GetBytes("new"));
+        await versions.Replace(file, owner.Id, 1, edit, edit.Length, "edit"); await db.SaveChangesAsync();
+        await versions.DeleteSnapshot(owner.Id, file.Id, 1, locks, default);
+        Assert.False(storage.Objects.ContainsKey(oldKey)); Assert.True(storage.Objects.ContainsKey(file.ObjectKey)); Assert.Empty(await db.FileVersions.ToListAsync());
+    }
+    [Fact] public async Task Office_opens_and_collaborates_without_any_saved_versions()
+    {
+        db.FileVersions.RemoveRange(await db.FileVersions.ToListAsync()); await db.SaveChangesAsync();
+        var config = Json((await Service(owner).Config(file.Id, "auto")).Config);
+        var token = new Uri(config.GetProperty("document").GetProperty("url").GetString()!).Query.Split("access_token=")[1];
+        using (var initial = (await Service(owner).Content(file.Id, token)).Stream) Assert.Equal("original", Encoding.UTF8.GetString(initial.ToArray()));
+        await Save(config, 6, owner);
+        using (var initial = (await Service(owner).Content(file.Id, token)).Stream) Assert.Equal("original", Encoding.UTF8.GetString(initial.ToArray()));
+        Assert.Empty(await db.FileVersions.ToListAsync());
+        await Save(config, 2, owner); await Save(config, 2, owner);
+        Assert.Empty(await db.FileVersions.ToListAsync()); Assert.Single(storage.Objects); Assert.Equal(3, file.Version);
+    }
+    [Fact] public async Task Manual_snapshot_is_permission_checked_idempotent_and_survives_edits()
+    {
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => versions.Snapshot(reader.Id, file.Id, locks, default))).Status);
+        using var edit = new MemoryStream(Encoding.UTF8.GetBytes("manual"));
+        await versions.Replace(file, owner.Id, 1, edit, edit.Length, "edit"); await db.SaveChangesAsync();
+        Assert.Single(await db.FileVersions.ToListAsync());
+        await versions.Snapshot(owner.Id, file.Id, locks, default); await versions.Snapshot(owner.Id, file.Id, locks, default);
+        Assert.Equal(2, await db.FileVersions.CountAsync());
+        var savedKey = file.ObjectKey;
+        using var next = new MemoryStream(Encoding.UTF8.GetBytes("next"));
+        await versions.Replace(file, owner.Id, 2, next, next.Length, "next"); await db.SaveChangesAsync(); await versions.RemoveUnused(savedKey);
+        Assert.True(storage.Objects.ContainsKey(savedKey)); Assert.Equal(2, await db.FileVersions.CountAsync());
+    }
+    [Fact] public async Task Restore_preserves_history_and_metadata_and_creates_new_version()
+    {
+        var originalKey = file.ObjectKey;
+        using var edited = new MemoryStream(Encoding.UTF8.GetBytes("edited"));
+        await versions.Replace(file, owner.Id, 1, edited, edited.Length, "test-edit"); await db.SaveChangesAsync();
+        await versions.Restore(owner.Id, file.Id, 1, 2, locks, CancellationToken.None);
+        Assert.Equal(3, file.Version); Assert.Equal("Budget.xlsx", file.Name); Assert.Equal(owner.Id, file.OwnerId);
+        Assert.Equal(child.Id, file.ParentFolderId); Assert.Equal("original", Encoding.UTF8.GetString(storage.Objects[file.ObjectKey]));
+        Assert.Equal("original", Encoding.UTF8.GetString(storage.Objects[originalKey]));
+        Assert.Equal(1, await db.FileVersions.CountAsync());
+        Assert.True(await db.AuditLogs.AnyAsync(x => x.Action == "RESTORE_FILE_VERSION"));
+    }
+    [Fact] public async Task Restore_rejects_reader_stale_missing_and_active_office_session()
+    {
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => versions.Restore(reader.Id, file.Id, 1, 1, locks, CancellationToken.None))).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => versions.Restore(owner.Id, file.Id, 1, 99, locks, CancellationToken.None))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => versions.Restore(owner.Id, file.Id, 99, 1, locks, CancellationToken.None))).Status);
+        await Service(owner).Config(file.Id, "edit");
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => versions.Restore(owner.Id, file.Id, 99, 1, locks, CancellationToken.None))).Status);
+        Assert.Equal(1, file.Version);
+    }
     [Fact] public async Task Inherited_read_access_is_signed_view_only_and_cannot_request_edit()
     {
         var response = await Service(reader).Config(file.Id, "auto"); var config = Json(response.Config);
@@ -121,9 +182,9 @@ public sealed class OnlyOfficeTests : IDisposable
         await Save(config, 2, reader); Assert.Equal(3, file.Version);
         Assert.NotEqual(Key(config), Key(Json((await Service(owner).Config(file.Id, "auto")).Config)));
         Assert.Equal(owner.Id, file.OwnerId); Assert.Equal(child.Id, file.ParentFolderId); Assert.Equal("Budget.xlsx", file.Name);
-        Assert.Equal("Budget.xlsx", file.OriginalName); Assert.Equal(createdAt, file.CreatedAt); Assert.Equal(3, await db.FileVersions.CountAsync());
+        Assert.Equal("Budget.xlsx", file.OriginalName); Assert.Equal(createdAt, file.CreatedAt); Assert.Equal(1, await db.FileVersions.CountAsync());
         Assert.Equal(initialKey, (await db.FileVersions.SingleAsync(x => x.Number == 1)).ObjectKey);
-        Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "SAVE_FILE_VERSION" && x.UserId == reader.Id));
+        Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "EDIT_FILE" && x.UserId == reader.Id));
     }
     [Fact] public async Task Read_only_and_revoked_editors_cannot_save()
     {
@@ -227,7 +288,7 @@ public sealed class OnlyOfficeTests : IDisposable
     private sealed class MemoryStorage() : ObjectStorage(new MinioClient().WithEndpoint("unused:9000").WithCredentials("test", "test-only").Build(), new ConfigurationBuilder().Build())
     {
         public readonly Dictionary<string, byte[]> Objects = new(); public bool FailPut;
-        public override async Task Put(string key, Stream stream, long size, string contentType) { if (FailPut) throw new IOException("Storage unavailable"); using var data = new MemoryStream(); await stream.CopyToAsync(data); Objects[key] = data.ToArray(); }
+        public override async Task Put(string key, Stream stream, long size, string contentType, CancellationToken cancellationToken = default) { if (FailPut) throw new IOException("Storage unavailable"); using var data = new MemoryStream(); await stream.CopyToAsync(data, cancellationToken); Objects[key] = data.ToArray(); }
         public override Task<MemoryStream> Get(string key) => Task.FromResult(new MemoryStream(Objects[key]));
         public override Task Remove(string key) { Objects.Remove(key); return Task.CompletedTask; }
     }

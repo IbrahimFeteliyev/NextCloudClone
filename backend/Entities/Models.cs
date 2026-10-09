@@ -14,6 +14,8 @@ public class User
 }
 public class Folder
 {
+    public DateTime? DeletedAt { get; set; }
+    public Guid? TrashRootId { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
     public Guid OwnerId { get; set; }
@@ -26,6 +28,8 @@ public class Folder
 }
 public class Document
 {
+    public DateTime? DeletedAt { get; set; }
+    public Guid? TrashRootId { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
     public string OriginalName { get; set; } = "";
@@ -54,9 +58,10 @@ public class FileVersion
     public Guid CreatedById { get; set; }
     public User CreatedBy { get; set; } = null!;
 }
-// A force-save creates a snapshot while collaborators keep using this session's key.
+// Collaborators keep one key and initial content reference across ordinary saves.
 public class OfficeSession
 {
+    public string InitialObjectKey { get; set; } = "";
     public string Key { get; set; } = "";
     public Guid FileId { get; set; }
     public Document File { get; set; } = null!;
@@ -72,6 +77,12 @@ public class OfficeParticipant
     public Guid UserId { get; set; }
     public User User { get; set; } = null!;
     public bool CanEdit { get; set; }
+}
+public class OfficeSave
+{
+    public string Id { get; set; } = "";
+    public Guid FileId { get; set; }
+    public Document File { get; set; } = null!;
 }
 public class FolderPermission
 {
@@ -90,6 +101,16 @@ public class FilePermission
     public Guid UserId { get; set; }
     public User User { get; set; } = null!;
     public Access Access { get; set; }
+}
+public class Favorite
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public Guid? FolderId { get; set; }
+    public Folder? Folder { get; set; }
+    public Guid? FileId { get; set; }
+    public Document? File { get; set; }
 }
 public class AuditLog
 {

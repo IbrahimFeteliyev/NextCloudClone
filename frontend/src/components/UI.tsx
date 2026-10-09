@@ -8,7 +8,7 @@ export function Logo() { return <div className="brand"><img src="/atlas.svg" alt
 export function Avatar({ name, small = false, index = 0 }: { name: string; small?: boolean; index?: number }) {
   return <span className={`avatar avatar-${index % 4} ${small ? 'avatar-small' : ''}`} title={name}>{initials(name)}</span>;
 }
-export function FileIcon({ resource, large = false }: { resource: Resource; large?: boolean }) {
+export function FileIcon({ resource, large = false }: { resource: Pick<Resource, 'type' | 'name'>; large?: boolean }) {
   const category = fileCategory(resource);
   const Icon = resource.type === 'folder' ? Folder : category === 'Spreadsheets' ? Sheet : category === 'Images' ? Image : /\.(pdf|docx?|md|txt)$/i.test(resource.name) ? FileText : File;
   const color = resource.type === 'folder' ? 'folder' : /\.pdf$/i.test(resource.name) ? 'pdf' : category === 'Spreadsheets' ? 'sheet' : category === 'Images' ? 'image' : 'doc';

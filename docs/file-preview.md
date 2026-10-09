@@ -7,12 +7,14 @@ Click a file name in either list or grid view, or choose **Open / Preview** from
 | MP4, WebM, OGG/OGV, M4V, MOV and other `video/*` | Video.js 8; playback depends on browser codec support |
 | JPEG, PNG, WebP, GIF, SVG and other `image/*` | PhotoSwipe 5; responsive fit and zoom |
 | PDF | PDF.js 6; page navigation, zoom, scrolling and lazy page rendering |
-| Markdown | react-markdown 10 + remark-gfm; headings, lists, links, code and tables |
-| TXT, LOG | Read-only text viewer, preserving line breaks |
+| Markdown | react-markdown 10 + remark-gfm rendered preview; CodeMirror source/edit with draft preview switching |
+| TXT, LOG, JSON, XML, SQL, JS, TS, CSS, HTML, CS, PY | CodeMirror 6 with each language's syntax; WRITE users can edit UTF-8 files up to 512 KiB with versioned Save/Cancel |
 | CSV | Papa Parse 5 + TanStack Table 8; delimiter detection, quoted cells, header override and pagination |
 | DOCX, XLSX, PPTX | Existing ONLYOFFICE signed view/edit and collaborative save flow |
 
-`frontend/src/features/file-preview/previewResolver.ts` selects by specific MIME first, then extension for missing/octet-stream MIME. Plain-text Markdown/CSV uploads use their extension because browsers often report them as `text/plain`. The explorer now includes the normalized content type. Metadata is refreshed and READ checked when opening each non-Office preview; Office uses its existing configuration endpoint.
+`shared/text-file-types.json` centralizes extension/language/MIME detection for text/code files across frontend and backend. Known MIME aliases and generic MIME select the registered language. `frontend/src/features/file-preview/previewResolver.ts` preserves specific media MIME and other extension fallbacks; CSV keeps its existing route. The explorer includes the normalized content type. Metadata is refreshed and READ checked when opening each non-Office preview; Office uses its existing configuration endpoint.
+
+Expanded languages, Markdown editing, JSON formatting, the new responsive search panel and current test results are documented in [Text and code editor](code-editor.md). Upload progress is documented in [Text editor and upload progress](text-editor-uploads.md).
 
 ## API and permissions
 
@@ -29,7 +31,7 @@ Markdown excludes raw HTML and unsafe URL protocols; external images are represe
 
 ## Demo limits
 
-To keep large files responsive, text reads only 512 KB, Markdown 256 KB, and CSV 1 MB. CSV shows at most 5,000 records and 100 columns with 100 rows per page; header detection can be overridden. A truncated final CSV record is discarded. Images are limited to 30 MB, SVG to 2 MB. PDF displays up to 200 pages, rendering only nearby canvases and releasing distant ones. Visible notices explain limits and provide the original Download action. Protected content already loaded into a user's browser remains visible after revocation, as with normal file downloads.
+To keep large files responsive, text/code and Markdown read only 512 KiB, and CSV 1 MB. Larger text documents remain read-only. CSV shows at most 5,000 records and 100 columns with 100 rows per page; header detection can be overridden. A truncated final CSV record is discarded. Images are limited to 30 MB, SVG to 2 MB. PDF displays up to 200 pages, rendering only nearby canvases and releasing distant ones. Visible notices explain limits and provide the original Download action. Protected content already loaded into a user's browser remains visible after revocation, as with normal file downloads.
 
 PDF workers are bundled locally. `frontend/scripts/copy-pdf-assets.mjs`, run by `npm run dev/build`, copies fonts, character maps and WASM from the installed PDF.js package into generated public assets. Viewer libraries load in separate chunks; dev dependency optimization prevents the first viewer open from triggering a Vite reload.
 

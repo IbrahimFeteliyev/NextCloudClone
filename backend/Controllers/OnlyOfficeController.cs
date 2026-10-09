@@ -27,8 +27,18 @@ public class OnlyOfficeController(OnlyOfficeService office, ILogger<OnlyOfficeCo
     }
 }
 [Authorize, ApiController, Route("api/files/{id:guid}/versions")]
-public class FileVersionsController(FileVersionService versions, CurrentUser user) : ControllerBase
+public class FileVersionsController(FileVersionService versions, CurrentUser user, DocumentLocks locks) : ControllerBase
 {
+    public record RestoreRequest(int ExpectedVersion);
+    [HttpDelete("{number:int}")]
+    public async Task<IActionResult> Delete(Guid id, int number, CancellationToken cancellationToken)
+    { await versions.DeleteSnapshot(user.Id, id, number, locks, cancellationToken); return NoContent(); }
+    [HttpPost]
+    public async Task<IActionResult> Snapshot(Guid id, CancellationToken cancellationToken)
+    { await versions.Snapshot(user.Id, id, locks, cancellationToken); return NoContent(); }
+    [HttpPost("{number:int}/restore")]
+    public async Task<IActionResult> Restore(Guid id, int number, RestoreRequest body, CancellationToken cancellationToken)
+    { await versions.Restore(user.Id, id, number, body.ExpectedVersion, locks, cancellationToken); return NoContent(); }
     [HttpGet] public Task<object> List(Guid id) => versions.List(user.Id, id);
     [HttpGet("{number:int}/download")]
     public async Task<IActionResult> Download(Guid id, int number)

@@ -35,7 +35,7 @@ public class OnlyOfficeService(AppDbContext db, CurrentUser current, PermissionS
         {
             // Also rotate after a no-change close or an expired session. Active configs stay stable.
             var key = $"{fileId:N}-v{file.Version}-{Guid.NewGuid():N}";
-            session = new() { Key = key, FileId = fileId, InitialVersion = file.Version,
+            session = new() { Key = key, FileId = fileId, InitialVersion = file.Version, InitialObjectKey = file.ObjectKey,
                 LastSavedVersion = file.Version, ExpiresAt = DateTime.UtcNow.AddHours(options.SessionHours) };
             db.OfficeSessions.Add(session);
         }
@@ -80,7 +80,8 @@ public class OnlyOfficeService(AppDbContext db, CurrentUser current, PermissionS
         var session = await db.OfficeSessions.FindAsync(grant.String("key"));
         if (session == null || session.FileId != fileId || session.ClosedAt != null || session.ExpiresAt <= DateTime.UtcNow || session.InitialVersion != version)
             throw new ApiException(403, "This editing session is closed or expired. Reopen the document.");
-        return await versions.Download(actor, fileId, version);
+        var file = (await db.Files.FindAsync(fileId))!;
+        return (await storage.Get(session.InitialObjectKey), file.ContentType, file.Name);
     }
     public async Task Callback(Guid fileId, string? accessToken, JsonElement body, string? authorization)
     {
@@ -91,6 +92,7 @@ public class OnlyOfficeService(AppDbContext db, CurrentUser current, PermissionS
         using var lease = await locks.Enter(fileId);
         var session = await db.OfficeSessions.FindAsync(key) ?? throw new ApiException(404, "Editing session not found.");
         var file = await db.Files.FindAsync(fileId) ?? throw new ApiException(404, "File not found.");
+        if (file.DeletedAt != null) throw new ApiException(404, "File is in Trash.");
         if (session.FileId != fileId || session.ExpiresAt <= DateTime.UtcNow) throw new ApiException(403, "Editing session expired.");
         if (status is 3 or 7) { logger.LogWarning("ONLYOFFICE reported save failure for {FileId}, status {Status}", fileId, status); throw new ApiException(502, "ONLYOFFICE reported a document save error. The previous version is preserved."); }
         if (status is 1 or 4)
@@ -102,7 +104,7 @@ public class OnlyOfficeService(AppDbContext db, CurrentUser current, PermissionS
         var url = callback.String("url");
         if (string.IsNullOrEmpty(url)) throw new ApiException(400, "Save callback is missing its signed download URL.");
         var saveId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{key}|{status}|{url}")));
-        if (await db.FileVersions.AnyAsync(x => x.FileId == fileId && x.SaveId == saveId)) return;
+        if (await db.OfficeSaves.AnyAsync(x => x.FileId == fileId && x.Id == saveId)) return;
         if (session.ClosedAt != null) throw new ApiException(409, "This editing session has already closed.");
         if (!callback.TryGetProperty("users", out var users) || users.ValueKind != JsonValueKind.Array || users.GetArrayLength() == 0)
             throw new ApiException(403, "A save must identify an authorized editor.");
@@ -121,10 +123,13 @@ public class OnlyOfficeService(AppDbContext db, CurrentUser current, PermissionS
         ValidateDocument(content, extension);
         await using var transaction = await db.Database.BeginTransactionAsync();
         string? newObject = null;
+        var oldKey = file.ObjectKey;
         try
         {
             newObject = await versions.Replace(file, actor, session.LastSavedVersion, content, content.Length, saveId);
             session.LastSavedVersion = file.Version;
+            db.OfficeSaves.Add(new() { Id = saveId, FileId = fileId });
+            audit.Add(actor, "EDIT_FILE", fileId, "file", $"Saved {file.Name} from ONLYOFFICE");
             if (status == 2) session.ClosedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(); await transaction.CommitAsync();
         }
@@ -134,6 +139,8 @@ public class OnlyOfficeService(AppDbContext db, CurrentUser current, PermissionS
             if (newObject != null) { try { await storage.Remove(newObject); } catch (Exception ex) { logger.LogWarning(ex, "Unable to clean up failed ONLYOFFICE save object"); } }
             throw;
         }
+        await versions.RemoveUnused(oldKey);
+        if (session.ClosedAt != null) await versions.RemoveUnused(session.InitialObjectKey);
     }
     private static void ValidateDocument(MemoryStream stream, string extension)
     {

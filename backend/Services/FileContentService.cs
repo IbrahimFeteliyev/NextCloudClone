@@ -16,6 +16,7 @@ public static class FileContentTypes
     {
         var mime = MediaTypeHeaderValue.TryParse(file.ContentType, out var parsed) ? parsed.MediaType.ToString().ToLowerInvariant() : "application/octet-stream";
         var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (TextFileTypes.Resolve(file.Name, mime) is { } textType) return textType.Mime;
         if (mime == "text/plain" && extension is ".md" or ".markdown") return "text/markdown";
         if (mime == "text/plain" && extension == ".csv") return "text/csv";
         if (mime != "application/octet-stream") return mime;
@@ -31,7 +32,7 @@ public static class FileContentTypes
     }
 }
 
-public record PreviewTicket(Guid Id, string Name, string ContentType, long Size, int Version, string ContentPath, DateTime ExpiresAt);
+public record PreviewTicket(Guid Id, string Name, string ContentType, long Size, int Version, string ContentPath, DateTime ExpiresAt, Access Permissions = Access.None, int TextEditLimit = TextContentService.MaxBytes);
 
 // Native video elements cannot attach our session's Bearer header. A separate, short-lived
 // JWT authorizes only this file/version's content endpoint, and never replaces READ checks.
@@ -53,7 +54,7 @@ public class FileContentService(AppDbContext db, CurrentUser current, Permission
             notBefore: DateTime.UtcNow, expires: expires, signingCredentials: new(SigningKey, SecurityAlgorithms.HmacSha256));
         var token = new JwtSecurityTokenHandler().WriteToken(jwt);
         return new(id, file.Name, FileContentTypes.Resolve(file), file.Size, file.Version,
-            $"/files/{id}/content?preview_token={Uri.EscapeDataString(token)}", expires);
+            $"/files/{id}/content?preview_token={Uri.EscapeDataString(token)}", expires, await permissions.FileAccess(current.Id, id));
     }
     public (Guid Actor, int Version) ValidateTicket(string token, Guid id)
     {

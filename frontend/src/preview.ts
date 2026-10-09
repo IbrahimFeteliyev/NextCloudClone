@@ -30,9 +30,11 @@ export function previewExplorer(view: View, folderId: string | null, search: str
     const f = previewItems.find(x => x.id === current); if (!f) break;
     breadcrumbs.unshift({ id: f.id, name: f.name }); current = f.parentFolderId;
   }
-  const items = search ? previewItems.filter(x => x.name.toLowerCase().includes(search.toLowerCase()))
+  const scope = folder ? previewItems : view === 'favorites' ? previewItems.filter(x => ['report', 'documents'].includes(x.id)).map(x => ({ ...x, isFavorite: true })) : view === 'shared-by-me' ? previewItems.filter(x => x.ownerId === previewUser.id && x.sharedWith.some(s => !s.inherited && s.permissions > 0)) : previewItems;
+  const items = search ? scope.filter(x => x.name.toLowerCase().includes(search.toLowerCase()))
     : folder ? previewItems.filter(x => x.parentFolderId === folder)
     : view === 'shared' ? previewItems.filter(x => x.id === 'shared-project')
+    : view === 'favorites' || view === 'shared-by-me' ? scope
     : previewItems.filter(x => x.type === 'file').sort((a, b) => b.modified.localeCompare(a.modified));
   return { folderId: folder, permissions: folder === 'shared-project' ? 1 : folder ? 15 : 0, breadcrumbs, items };
 }

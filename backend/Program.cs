@@ -16,7 +16,7 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUser>(); builder.Services.AddScoped<PermissionService>(); builder.Services.AddScoped<DocumentService>();
-builder.Services.AddScoped<FileContentService>();
+builder.Services.AddScoped<FileContentService>(); builder.Services.AddScoped<TextContentService>();
 builder.Services.AddScoped<AuditService>(); builder.Services.AddScoped<SeedData>(); builder.Services.AddScoped<ObjectStorage>(); builder.Services.AddScoped<PasswordHasher<User>>();
 builder.Services.AddSingleton<DocumentLocks>(); builder.Services.AddSingleton<OnlyOfficeOptions>();
 builder.Services.AddScoped<OnlyOfficeTokens>(); builder.Services.AddScoped<OnlyOfficeService>(); builder.Services.AddScoped<FileVersionService>();
@@ -49,9 +49,10 @@ var app = builder.Build();
 app.Use(async (context, next) =>
 {
     try { await next(); }
-    catch (ApiException ex) { context.Response.StatusCode = ex.Status; await context.Response.WriteAsJsonAsync(new { message = ex.Message }); }
+    catch (ApiException ex) { context.Response.StatusCode = ex.Status; await context.Response.WriteAsJsonAsync(new { message = ex.Message, details = ex.Details }); }
     catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" })
     { context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { message = "This name is already in use. Refresh and try another name." }); }
+    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { /* The client disconnected; storage services clean up before cancellation escapes. */ }
     catch (Exception ex) { app.Logger.LogError(ex, "Request failed"); context.Response.StatusCode = 500; await context.Response.WriteAsJsonAsync(new { message = "The request could not be completed. Check the API log and local services." }); }
 });
 app.UseCors(); if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
