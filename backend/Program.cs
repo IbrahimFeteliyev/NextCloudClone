@@ -16,6 +16,8 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUser>(); builder.Services.AddScoped<PermissionService>(); builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<OrganizationService>();
+builder.Services.AddScoped<TeamDemoSeed>();
 builder.Services.AddScoped<FileContentService>(); builder.Services.AddScoped<TextContentService>();
 builder.Services.AddScoped<AuditService>(); builder.Services.AddScoped<SeedData>(); builder.Services.AddScoped<ObjectStorage>(); builder.Services.AddScoped<PasswordHasher<User>>();
 builder.Services.AddSingleton<DocumentLocks>(); builder.Services.AddSingleton<OnlyOfficeOptions>();
@@ -56,12 +58,24 @@ app.Use(async (context, next) =>
     catch (Exception ex) { app.Logger.LogError(ex, "Request failed"); context.Response.StatusCode = 500; await context.Response.WriteAsJsonAsync(new { message = "The request could not be completed. Check the API log and local services." }); }
 });
 app.UseCors(); if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
-app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
+app.UseAuthentication();
+app.Use(async (context, next) => {
+    if (context.User.Identity?.IsAuthenticated == true) {
+        var id = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var db = context.RequestServices.GetRequiredService<AppDbContext>();
+        if (!Guid.TryParse(id, out var userId) || !await db.Users.AnyAsync(x => x.Id == userId && x.IsActive)) {
+            context.Response.StatusCode = 401; await context.Response.WriteAsJsonAsync(new { message = "This account is inactive. Please sign in with an active account." }); return;
+        }
+    }
+    await next(context);
+});
+app.UseAuthorization(); app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", application = "Atlas" }));
 if (!builder.Configuration.GetValue("Demo:SkipSeed", false))
 {
     using var scope = app.Services.CreateScope(); await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
     await scope.ServiceProvider.GetRequiredService<SeedData>().Initialize();
+    await scope.ServiceProvider.GetRequiredService<TeamDemoSeed>().Initialize();
 }
 app.Run();
 public partial class Program { }

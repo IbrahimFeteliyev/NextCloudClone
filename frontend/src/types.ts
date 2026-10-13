@@ -1,7 +1,10 @@
-export type View = 'files' | 'shared' | 'shared-by-me' | 'favorites' | 'recent' | 'audit' | 'trash';
-export type User = { id: string; name: string; email: string; role: string };
+export type View = 'files' | 'shared' | 'shared-by-me' | 'favorites' | 'recent' | 'audit' | 'trash' | 'teams';
+export type User = { id: string; name: string; email: string; role: string; departmentId?: string | null; department?: string | null; isActive?: boolean };
 export type Share = { userId: string; name: string; email: string; permissions: number; inherited: boolean; source: string };
-export type Resource = { id: string; name: string; contentType?: string | null; type: 'folder' | 'file'; ownerId: string; owner: string; ownerEmail: string; modified: string; size: number; parentFolderId: string | null; permissions: number; sharedWith: Share[]; isFavorite?: boolean };
+export type Resource = { id: string; name: string; contentType?: string | null; type: 'folder' | 'file'; ownerId: string; owner: string; ownerEmail: string; modified: string; size: number; parentFolderId: string | null; permissions: number; sharedWith: Share[]; isFavorite?: boolean; teamSpaceId?: string | null; isTeamRoot?: boolean };
+export type Group = { id: string; name: string; departmentId: string | null; isAllStaff: boolean; isAdministrators: boolean };
+export type Organization = { departments: { id: string; name: string }[]; groups: Group[] };
+export type GroupShare = { groupId: string; name: string; permissions: number; inherited: boolean; source: string };
 export type Explorer = { folderId: string | null; permissions: number; breadcrumbs: { id: string; name: string }[]; items: Resource[]; total?: number };
 export type TrashItem = { id: string; name: string; type: 'file' | 'folder'; size: number; deletedAt: string; retainUntil: string };
 export type Stats = { usedBytes: number; fileCount: number; folderCount: number };

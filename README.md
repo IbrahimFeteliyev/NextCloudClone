@@ -2,6 +2,8 @@
 
 A small corporate document management demo with its own Atlas identity. React + TypeScript + Vite + Tailwind on the frontend; ASP.NET Core, EF Core, PostgreSQL, JWT, and MinIO on the backend. PostgreSQL stores metadata and hashed passwords. MinIO stores the actual file bytes under generated object keys.
 
+The local [departments, groups and Team Folders demo](docs/team-folders.md) adds common staff documents, department access, project groups and individual exceptions. Admins manage this through **avatar → Organization & Team Folders**. No AD or ERP connection is required.
+
 TXT/LOG, JSON, XML, SQL, JS/TS, CSS/HTML, C# and Python open in CodeMirror 6 with syntax highlighting, permission-based editing and versioned saves. Markdown has rendered preview and source editing. The editor includes a compact responsive Find/Replace panel and JSON formatting. See [editor implementation, packages, changed files and tests](docs/code-editor.md). Uploads retain per-file progress, Cancel and Retry; see [upload implementation](docs/text-editor-uploads.md).
 
 ## Quick start
@@ -102,7 +104,7 @@ Permission checks live in `backend/Permissions/PermissionService.cs`. Every oper
 
 Grants are numeric bitmasks in the API; READ + WRITE is `3`. Except for an explicit `0` denial, all grants include READ. Owners have all permissions (`15`). Admin can inspect all audit events, but does **not** bypass resource permissions: the demo still requires Finance to share Secret.xlsx with Admin.
 
-For a file, a direct file grant takes priority. Otherwise the closest explicit folder grant applies, walking toward the root. A more specific grant **replaces**, rather than adds to, inherited permissions. Explicit zero permissions block inherited access. Removing a direct grant restores parent inheritance, which can mean access remains; inherited access can be changed at its source or overridden on the child.
+At each file/folder level, an individual grant takes priority, followed by the user's applicable group grants. Group permissions at the same level combine, unless an applicable group has explicit zero access. If no grant applies, resolution walks toward the root. A more specific grant replaces inherited permissions. Removing a direct grant restores inheritance. Personal owners retain full access; Team Folders use explicit grants instead of an employee owner bypass. See [Team Folder permission rules](docs/team-folders.md).
 
 Shared With Me displays the highest accessible directly shared items. Subfolders and files under a readable shared folder appear when opening that folder. A separately shared child under an inaccessible ancestor appears directly. Breadcrumbs omit ancestors the recipient cannot read.
 

@@ -60,6 +60,24 @@ namespace backend.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("Atlas.Api.Entities.Department", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Departments");
+                });
+
             modelBuilder.Entity("Atlas.Api.Entities.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -98,6 +116,9 @@ namespace backend.Data.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("TeamSpaceId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("TrashRootId")
                         .HasColumnType("uuid");
 
@@ -114,6 +135,8 @@ namespace backend.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("TeamSpaceId");
 
                     b.HasIndex("ParentFolderId", "Name")
                         .IsUnique()
@@ -240,6 +263,9 @@ namespace backend.Data.Migrations
                     b.Property<bool>("IsRoot")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsTeamRoot")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -249,6 +275,9 @@ namespace backend.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("ParentFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TeamSpaceId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("TrashRootId")
@@ -262,6 +291,10 @@ namespace backend.Data.Migrations
                     b.HasIndex("OwnerId")
                         .IsUnique()
                         .HasFilter("\"IsRoot\" = true");
+
+                    b.HasIndex("TeamSpaceId")
+                        .IsUnique()
+                        .HasFilter("\"IsTeamRoot\" = true");
 
                     b.HasIndex("ParentFolderId", "Name")
                         .IsUnique()
@@ -293,6 +326,71 @@ namespace backend.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("FolderPermissions");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.Group", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsAdministrators")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsAllStaff")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Groups");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.GroupPermission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Access")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("FileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId");
+
+                    b.HasIndex("FolderId");
+
+                    b.HasIndex("GroupId", "FileId")
+                        .IsUnique();
+
+                    b.HasIndex("GroupId", "FolderId")
+                        .IsUnique();
+
+                    b.ToTable("GroupPermissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_GroupPermissions_Resource", "(\"FolderId\" IS NULL) <> (\"FileId\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.OfficeParticipant", b =>
@@ -380,16 +478,40 @@ namespace backend.Data.Migrations
                     b.ToTable("Roles");
                 });
 
+            modelBuilder.Entity("Atlas.Api.Entities.TeamSpace", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("TeamSpaces");
+                });
+
             modelBuilder.Entity("Atlas.Api.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -404,12 +526,29 @@ namespace backend.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("Email")
                         .IsUnique();
 
                     b.HasIndex("RoleId");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.UserGroup", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("UserId", "GroupId");
+
+                    b.HasIndex("GroupId");
+
+                    b.ToTable("UserGroups");
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.AuditLog", b =>
@@ -437,9 +576,16 @@ namespace backend.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Atlas.Api.Entities.TeamSpace", "TeamSpace")
+                        .WithMany()
+                        .HasForeignKey("TeamSpaceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Owner");
 
                     b.Navigation("ParentFolder");
+
+                    b.Navigation("TeamSpace");
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.Favorite", b =>
@@ -518,9 +664,16 @@ namespace backend.Data.Migrations
                         .HasForeignKey("ParentFolderId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Atlas.Api.Entities.TeamSpace", "TeamSpace")
+                        .WithMany()
+                        .HasForeignKey("TeamSpaceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Owner");
 
                     b.Navigation("ParentFolder");
+
+                    b.Navigation("TeamSpace");
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.FolderPermission", b =>
@@ -540,6 +693,41 @@ namespace backend.Data.Migrations
                     b.Navigation("Folder");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.Group", b =>
+                {
+                    b.HasOne("Atlas.Api.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.GroupPermission", b =>
+                {
+                    b.HasOne("Atlas.Api.Entities.Document", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Atlas.Api.Entities.Folder", "Folder")
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Atlas.Api.Entities.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
+
+                    b.Navigation("Folder");
+
+                    b.Navigation("Group");
                 });
 
             modelBuilder.Entity("Atlas.Api.Entities.OfficeParticipant", b =>
@@ -585,13 +773,39 @@ namespace backend.Data.Migrations
 
             modelBuilder.Entity("Atlas.Api.Entities.User", b =>
                 {
+                    b.HasOne("Atlas.Api.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Atlas.Api.Entities.Role", "Role")
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Department");
+
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("Atlas.Api.Entities.UserGroup", b =>
+                {
+                    b.HasOne("Atlas.Api.Entities.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Atlas.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+
+                    b.Navigation("User");
                 });
 #pragma warning restore 612, 618
         }

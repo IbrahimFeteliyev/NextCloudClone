@@ -41,6 +41,9 @@ it('requests successive server pages for Recent and Audit Logs', async () => {
   await click('Audit Logs'); expect(container.textContent).toContain('Page 1 of 3'); await click('Next');
   expect(api.request).toHaveBeenCalledWith('/audit/page?page=2&pageSize=20');
 });
+it('opens the Team Folders explorer', async () => {
+  await open(); await click('Team Folders'); expect(api.request.mock.calls.some(([path]) => path.includes('view=teams'))).toBe(true);
+});
 it('shows retention details and restores deleted items', async () => {
   await open(); await click('Trash'); expect(container.textContent).toContain('Automatic deletion is disabled');
   expect(container.textContent).toContain('deleted.txt'); await click('Actions for deleted.txt'); await click('Restore');

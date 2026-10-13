@@ -68,6 +68,15 @@ public sealed class OnlyOfficeTests : IDisposable
         var signed = tokens.Sign(new { key = Key(config), status, url, filetype = "xlsx", users = new[] { actor.Id.ToString() } }, DateTime.UtcNow.AddMinutes(5));
         return Service(owner).Callback(file.Id, AccessToken(config, "callbackUrl"), Json(new { token = signed }), null);
     }
+    [Fact] public async Task Group_permissions_control_office_mode_and_membership_revocation_blocks_save()
+    {
+        db.FolderPermissions.RemoveRange(await db.FolderPermissions.ToListAsync());
+        var group = new Group { Name = "Office team" }; db.Groups.Add(group); db.UserGroups.Add(new() { UserId = reader.Id, GroupId = group.Id });
+        var grant = new GroupPermission { GroupId = group.Id, FolderId = root.Id, Access = Access.Read }; db.GroupPermissions.Add(grant); await db.SaveChangesAsync();
+        Assert.Equal("view", (await Service(reader).Config(file.Id, "auto")).Mode);
+        grant.Access = Access.Read | Access.Write; await db.SaveChangesAsync(); var config = Json((await Service(reader).Config(file.Id, "auto")).Config); Assert.Equal("edit", config.GetProperty("editorConfig").GetProperty("mode").GetString());
+        db.UserGroups.Remove(await db.UserGroups.SingleAsync()); await db.SaveChangesAsync(); Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => Save(config, 2, reader))).Status);
+    }
     [Fact] public async Task Delete_snapshot_requires_delete_permission_and_keeps_current_content()
     {
         Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => versions.DeleteSnapshot(reader.Id, file.Id, 1, locks, default))).Status);

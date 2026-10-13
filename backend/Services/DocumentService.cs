@@ -23,13 +23,14 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
             throw new ApiException(409, "A file or folder with this name already exists here.");
     }
     private async Task<ResourceDto> ToDto(Folder f) => new(f.Id, f.Name, "folder", f.OwnerId,
-        f.Owner.Name, f.Owner.Email, f.UpdatedAt, 0, f.ParentFolderId, await permissions.FolderAccess(user.Id, f.Id), await permissions.Shares("folder", f.Id), IsFavorite: await db.Favorites.AnyAsync(x => x.UserId == user.Id && x.FolderId == f.Id));
+        f.TeamSpaceId is Guid teamId ? (await db.TeamSpaces.FindAsync(teamId))!.Name : f.Owner.Name, f.TeamSpaceId == null ? f.Owner.Email : "", f.UpdatedAt, 0, f.ParentFolderId, await permissions.FolderAccess(user.Id, f.Id), await permissions.Shares("folder", f.Id), IsFavorite: await db.Favorites.AnyAsync(x => x.UserId == user.Id && x.FolderId == f.Id), TeamSpaceId: f.TeamSpaceId, IsTeamRoot: f.IsTeamRoot);
     private async Task<ResourceDto> ToDto(Document f) => new(f.Id, f.Name, "file", f.OwnerId,
-        f.Owner.Name, f.Owner.Email, f.UpdatedAt, f.Size, f.ParentFolderId, await permissions.FileAccess(user.Id, f.Id), await permissions.Shares("file", f.Id), FileContentTypes.Resolve(f), await db.Favorites.AnyAsync(x => x.UserId == user.Id && x.FileId == f.Id));
+        f.TeamSpaceId is Guid teamId ? (await db.TeamSpaces.FindAsync(teamId))!.Name : f.Owner.Name, f.TeamSpaceId == null ? f.Owner.Email : "", f.UpdatedAt, f.Size, f.ParentFolderId, await permissions.FileAccess(user.Id, f.Id), await permissions.Shares("file", f.Id), FileContentTypes.Resolve(f), await db.Favorites.AnyAsync(x => x.UserId == user.Id && x.FileId == f.Id), f.TeamSpaceId);
     public async Task<ExplorerDto> Explore(string view, Guid? folderId, string? search, int? page = null, int pageSize = 20)
     {
-        if (view is not ("files" or "shared" or "recent" or "favorites" or "shared-by-me")) throw new ApiException(400, "Unknown view.");
+        if (view is not ("files" or "shared" or "recent" or "favorites" or "shared-by-me" or "teams")) throw new ApiException(400, "Unknown view.");
         var folders = await db.Folders.Include(x => x.Owner).ToListAsync(); var files = await db.Files.Include(x => x.Owner).ToListAsync();
+        var myGroups = await db.UserGroups.Where(x => x.UserId == user.Id).Select(x => x.GroupId).ToListAsync();
         var favorites = await db.Favorites.Where(x => x.UserId == user.Id).ToListAsync();
         var sharedFolders = await db.FolderPermissions.Where(x => x.Access != Access.None && x.UserId != user.Id).Select(x => x.FolderId).ToListAsync();
         var sharedFiles = await db.FilePermissions.Where(x => x.Access != Access.None && x.UserId != user.Id).Select(x => x.FileId).ToListAsync();
@@ -45,13 +46,14 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         var items = new List<ResourceDto>();
         foreach (var f in folders.Where(x => !x.IsRoot))
         {
+            if (folderId == null && view == "teams" && !f.IsTeamRoot) continue;
             if (folderId == null && view == "favorites" && !favorites.Any(x => x.FolderId == f.Id)) continue;
             if (folderId == null && view == "shared-by-me" && (f.OwnerId != user.Id || !sharedFolders.Contains(f.Id))) continue;
             if (view == "recent" && !searching && folderId == null) continue;
             if (folderId != null && !searching && f.ParentFolderId != folderId) continue;
             if (folderId == null && !searching && view == "shared")
             {
-                if (f.OwnerId == user.Id || !await db.FolderPermissions.AnyAsync(x => x.FolderId == f.Id && x.UserId == user.Id)) continue;
+                if (f.OwnerId == user.Id || (!await db.FolderPermissions.AnyAsync(x => x.FolderId == f.Id && x.UserId == user.Id) && !await db.GroupPermissions.AnyAsync(x => x.FolderId == f.Id && myGroups.Contains(x.GroupId)))) continue;
                 if (f.ParentFolderId is Guid parent && (await permissions.FolderAccess(user.Id, parent) & Access.Read) != 0) continue;
             }
             if (searching && !f.Name.Contains(search!.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
@@ -59,12 +61,13 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         }
         foreach (var f in files)
         {
+            if (folderId == null && view == "teams") continue;
             if (folderId == null && view == "favorites" && !favorites.Any(x => x.FileId == f.Id)) continue;
             if (folderId == null && view == "shared-by-me" && (f.OwnerId != user.Id || !sharedFiles.Contains(f.Id))) continue;
             if (folderId != null && !searching && f.ParentFolderId != folderId) continue;
             if (folderId == null && !searching && view == "shared")
             {
-                if (f.OwnerId == user.Id || !await db.FilePermissions.AnyAsync(x => x.FileId == f.Id && x.UserId == user.Id)) continue;
+                if (f.OwnerId == user.Id || (!await db.FilePermissions.AnyAsync(x => x.FileId == f.Id && x.UserId == user.Id) && !await db.GroupPermissions.AnyAsync(x => x.FileId == f.Id && myGroups.Contains(x.GroupId)))) continue;
                 if ((await permissions.FolderAccess(user.Id, f.ParentFolderId) & Access.Read) != 0) continue;
             }
             if (searching && !f.Name.Contains(search!.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
@@ -89,7 +92,7 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
     {
         await permissions.Require(user.Id, "folder", request.ParentFolderId, Access.Read | Access.Write); var parent = (await db.Folders.FindAsync(request.ParentFolderId))!;
         var name = CleanName(request.Name); await UniqueName(parent.Id, name);
-        var folder = new Folder { Name = name, OwnerId = parent.OwnerId, ParentFolderId = parent.Id };
+        var folder = new Folder { Name = name, OwnerId = parent.OwnerId, TeamSpaceId = parent.TeamSpaceId, ParentFolderId = parent.Id };
         db.Folders.Add(folder); parent.UpdatedAt = DateTime.UtcNow; audit.Add(user.Id, "CREATE_FOLDER", folder.Id, "folder", $"Created {name} in {parent.Name}");
         await db.SaveChangesAsync(); await db.Entry(folder).Reference(x => x.Owner).LoadAsync(); return await ToDto(folder);
     }
@@ -136,7 +139,7 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         if (replace) throw new ApiException(409, "The destination no longer exists. Retry as a new upload.");
         await UniqueName(parentId, name);
         var doc = new Document { Name = name, OriginalName = name, ObjectKey = $"documents/{Guid.NewGuid():N}", Size = upload.Length,
-            ContentType = string.IsNullOrWhiteSpace(upload.ContentType) ? "application/octet-stream" : upload.ContentType, OwnerId = parent.OwnerId, ParentFolderId = parent.Id };
+            ContentType = string.IsNullOrWhiteSpace(upload.ContentType) ? "application/octet-stream" : upload.ContentType, OwnerId = parent.OwnerId, TeamSpaceId = parent.TeamSpaceId, ParentFolderId = parent.Id };
         try
         {
             using var stream = upload.OpenReadStream();
@@ -164,7 +167,7 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         await permissions.Require(user.Id, type, id, Access.Read | Access.Write); name = CleanName(name);
         if (type == "folder")
         {
-            var f = (await db.Folders.FindAsync(id))!; if (f.IsRoot) throw new ApiException(400, "Your personal root cannot be renamed.");
+            var f = (await db.Folders.FindAsync(id))!; if (f.IsRoot || f.IsTeamRoot) throw new ApiException(400, "Your personal root cannot be renamed.");
             await UniqueName(f.ParentFolderId!.Value, name, id); audit.Add(user.Id, "RENAME_FOLDER", id, type, $"Renamed {f.Name} to {name}"); f.Name = name; f.UpdatedAt = DateTime.UtcNow;
         }
         else { var f = (await db.Files.FindAsync(id))!; await UniqueName(f.ParentFolderId, name, id); audit.Add(user.Id, "RENAME_FILE", id, type, $"Renamed {f.Name} to {name}"); f.Name = name; f.UpdatedAt = DateTime.UtcNow; }
@@ -176,14 +179,14 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         var target = (await db.Folders.FindAsync(destination))!;
         if (type == "folder")
         {
-            var f = (await db.Folders.FindAsync(id))!; if (f.IsRoot) throw new ApiException(400, "Your personal root cannot be moved.");
-            if (f.OwnerId != user.Id || target.OwnerId != f.OwnerId) throw new ApiException(403, "Only the owner can move resources, within their own workspace.");
+            var f = (await db.Folders.FindAsync(id))!; if (f.IsRoot || f.IsTeamRoot) throw new ApiException(400, "Your personal root cannot be moved.");
+            if (f.TeamSpaceId != target.TeamSpaceId || (f.TeamSpaceId == null ? f.OwnerId != user.Id || target.OwnerId != f.OwnerId : (await permissions.Get(user.Id, type, id) & Access.Share) == 0)) throw new ApiException(403, "Only the owner can move resources, within their own workspace.");
             var cursor = target; while (cursor != null) { if (cursor.Id == id) throw new ApiException(400, "A folder cannot be moved into itself or a subfolder."); cursor = cursor.ParentFolderId is Guid p ? await db.Folders.FindAsync(p) : null; }
             await UniqueName(destination, f.Name, id); f.ParentFolderId = destination; f.UpdatedAt = DateTime.UtcNow; audit.Add(user.Id, "MOVE_FOLDER", id, type, $"Moved {f.Name} to {target.Name}");
         }
         else
         {
-            var f = (await db.Files.FindAsync(id))!; if (f.OwnerId != user.Id || target.OwnerId != f.OwnerId) throw new ApiException(403, "Only the owner can move resources, within their own workspace.");
+            var f = (await db.Files.FindAsync(id))!; if (f.TeamSpaceId != target.TeamSpaceId || (f.TeamSpaceId == null ? f.OwnerId != user.Id || target.OwnerId != f.OwnerId : (await permissions.Get(user.Id, type, id) & Access.Share) == 0)) throw new ApiException(403, "Only the owner can move resources, within their own workspace.");
             await UniqueName(destination, f.Name, id); f.ParentFolderId = destination; f.UpdatedAt = DateTime.UtcNow; audit.Add(user.Id, "MOVE_FILE", id, type, $"Moved {f.Name} to {target.Name}");
         }
         target.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync();
@@ -194,7 +197,7 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         if (type == "file") files.Add((await db.Files.FindAsync(id))!);
         else
         {
-            var root = (await db.Folders.FindAsync(id))!; if (root.IsRoot) throw new ApiException(400, "Your personal root cannot be deleted.");
+            var root = (await db.Folders.FindAsync(id))!; if (root.IsRoot || root.IsTeamRoot) throw new ApiException(400, "Your personal root cannot be deleted.");
             var all = await db.Folders.ToListAsync(); var pending = new Queue<Folder>(); pending.Enqueue(root);
             while (pending.TryDequeue(out var f)) { await permissions.Require(user.Id, "folder", f.Id, Access.Read | Access.Delete); folders.Add(f); foreach (var c in all.Where(x => x.ParentFolderId == f.Id)) pending.Enqueue(c); }
             var ids = folders.Select(x => x.Id).ToList(); files = await db.Files.Where(x => ids.Contains(x.ParentFolderId)).ToListAsync();
@@ -209,8 +212,10 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
     }
     public async Task<object> Trash()
     {
-        var folders = await db.Folders.IgnoreQueryFilters().Where(x => x.OwnerId == user.Id && x.DeletedAt != null && x.TrashRootId == x.Id).ToListAsync();
-        var files = await db.Files.IgnoreQueryFilters().Where(x => x.OwnerId == user.Id && x.DeletedAt != null && x.TrashRootId == x.Id).ToListAsync();
+        var teamIds = new List<Guid>();
+        foreach (var root in await db.Folders.Where(x => x.IsTeamRoot).ToListAsync()) if ((await permissions.FolderAccess(user.Id, root.Id) & Access.Share) != 0) teamIds.Add(root.TeamSpaceId!.Value);
+        var folders = await db.Folders.IgnoreQueryFilters().Where(x => (x.OwnerId == user.Id || (x.TeamSpaceId != null && teamIds.Contains(x.TeamSpaceId.Value))) && x.DeletedAt != null && x.TrashRootId == x.Id).ToListAsync();
+        var files = await db.Files.IgnoreQueryFilters().Where(x => (x.OwnerId == user.Id || (x.TeamSpaceId != null && teamIds.Contains(x.TeamSpaceId.Value))) && x.DeletedAt != null && x.TrashRootId == x.Id).ToListAsync();
         return folders.Select(x => new { x.Id, x.Name, type = "folder", size = 0L, deletedAt = x.DeletedAt!.Value, retainUntil = x.DeletedAt.Value.AddDays(30) })
             .Concat(files.Select(x => new { x.Id, x.Name, type = "file", size = x.Size, deletedAt = x.DeletedAt!.Value, retainUntil = x.DeletedAt.Value.AddDays(30) }))
             .OrderByDescending(x => x.deletedAt).ToList();
@@ -223,7 +228,9 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         var folder = folders.SingleOrDefault(x => x.Id == id);
         var file = files.SingleOrDefault(x => x.Id == id);
         if (type == "folder" ? folder == null : file == null) throw new ApiException(404, "Trash item not found.");
-        if (folders.Any(x => x.OwnerId != user.Id) || files.Any(x => x.OwnerId != user.Id)) throw new ApiException(403, "Only the owner can restore items from Trash.");
+        var teamId = folder?.TeamSpaceId ?? file?.TeamSpaceId;
+        if (teamId != null) { var root = await db.Folders.SingleAsync(x => x.TeamSpaceId == teamId && x.IsTeamRoot); await permissions.Require(user.Id, "folder", root.Id, Access.Read | Access.Write | Access.Share); }
+        else if (folders.Any(x => x.OwnerId != user.Id) || files.Any(x => x.OwnerId != user.Id)) throw new ApiException(403, "Only the owner can restore items from Trash.");
         var parentId = folder?.ParentFolderId ?? file!.ParentFolderId;
         await permissions.Require(user.Id, "folder", parentId, Access.Read | Access.Write);
         await UniqueName(parentId, folder?.Name ?? file!.Name, id);
@@ -244,7 +251,7 @@ public class DocumentService(AppDbContext db, CurrentUser user, PermissionServic
         await permissions.Require(user.Id, type, id, Access.Read | Access.Share);
         if (((int)request.Permissions & ~15) != 0 || (request.Permissions != Access.None && (request.Permissions & Access.Read) == 0)) throw new ApiException(400, "Grants must include READ. Choose no permissions to block inherited access.");
         if ((request.Permissions & await permissions.Get(user.Id, type, id)) != request.Permissions) throw new ApiException(403, "You can only grant permissions you have yourself.");
-        if (!await db.Users.AnyAsync(x => x.Id == request.UserId)) throw new ApiException(404, "User not found.");
+        if (!await db.Users.AnyAsync(x => x.Id == request.UserId && x.IsActive)) throw new ApiException(404, "User not found.");
         var owner = type == "folder" ? (await db.Folders.FindAsync(id))!.OwnerId : (await db.Files.FindAsync(id))!.OwnerId;
         if (request.UserId == owner || request.UserId == user.Id) throw new ApiException(400, "You cannot change your own or the owner's access.");
         bool changed;

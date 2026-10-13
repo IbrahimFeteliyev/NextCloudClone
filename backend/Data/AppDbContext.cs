@@ -16,8 +16,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<OfficeSave> OfficeSaves => Set<OfficeSave>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<Group> Groups => Set<Group>();
+    public DbSet<UserGroup> UserGroups => Set<UserGroup>();
+    public DbSet<TeamSpace> TeamSpaces => Set<TeamSpace>();
+    public DbSet<GroupPermission> GroupPermissions => Set<GroupPermission>();
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<Department>().HasIndex(x => x.Name).IsUnique();
+        b.Entity<Group>().HasIndex(x => x.Name).IsUnique();
+        b.Entity<Group>().HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<User>().HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<TeamSpace>().HasIndex(x => x.Name).IsUnique();
+        b.Entity<Folder>().HasOne(x => x.TeamSpace).WithMany().HasForeignKey(x => x.TeamSpaceId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Document>().HasOne(x => x.TeamSpace).WithMany().HasForeignKey(x => x.TeamSpaceId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Folder>().HasIndex(x => x.TeamSpaceId).IsUnique().HasFilter("\"IsTeamRoot\" = true");
+        b.Entity<UserGroup>().HasKey(x => new { x.UserId, x.GroupId });
+        b.Entity<UserGroup>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<UserGroup>().HasOne(x => x.Group).WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GroupPermission>().ToTable("GroupPermissions", t => t.HasCheckConstraint("CK_GroupPermissions_Resource", "(\"FolderId\" IS NULL) <> (\"FileId\" IS NULL)"));
+        b.Entity<GroupPermission>().HasIndex(x => new { x.GroupId, x.FolderId }).IsUnique();
+        b.Entity<GroupPermission>().HasIndex(x => new { x.GroupId, x.FileId }).IsUnique();
+        b.Entity<GroupPermission>().HasOne(x => x.Group).WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GroupPermission>().HasOne(x => x.Folder).WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GroupPermission>().HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<User>().HasIndex(x => x.Email).IsUnique();
         b.Entity<User>().Property(x => x.Email).HasMaxLength(254);
         b.Entity<User>().HasOne(x => x.Role).WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);

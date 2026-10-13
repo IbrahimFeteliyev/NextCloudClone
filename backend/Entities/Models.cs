@@ -5,6 +5,9 @@ public enum Access { None = 0, Read = 1, Write = 2, Delete = 4, Share = 8, All =
 public class Role { public int Id { get; set; } public string Name { get; set; } = ""; }
 public class User
 {
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+    public bool IsActive { get; set; } = true;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Email { get; set; } = "";
     public string Name { get; set; } = "";
@@ -14,6 +17,9 @@ public class User
 }
 public class Folder
 {
+    public Guid? TeamSpaceId { get; set; }
+    public TeamSpace? TeamSpace { get; set; }
+    public bool IsTeamRoot { get; set; }
     public DateTime? DeletedAt { get; set; }
     public Guid? TrashRootId { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -28,6 +34,8 @@ public class Folder
 }
 public class Document
 {
+    public Guid? TeamSpaceId { get; set; }
+    public TeamSpace? TeamSpace { get; set; }
     public DateTime? DeletedAt { get; set; }
     public Guid? TrashRootId { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -122,4 +130,28 @@ public class AuditLog
     public string ResourceType { get; set; } = "";
     public string Details { get; set; } = "";
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+public class Department { public Guid Id { get; set; } = Guid.NewGuid(); public string Name { get; set; } = ""; }
+public class TeamSpace { public Guid Id { get; set; } = Guid.NewGuid(); public string Name { get; set; } = ""; }
+public class Group
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+    public bool IsAllStaff { get; set; }
+    public bool IsAdministrators { get; set; }
+}
+public class UserGroup
+{
+    public Guid UserId { get; set; } public User User { get; set; } = null!;
+    public Guid GroupId { get; set; } public Group Group { get; set; } = null!;
+}
+public class GroupPermission
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid GroupId { get; set; } public Group Group { get; set; } = null!;
+    public Guid? FolderId { get; set; } public Folder? Folder { get; set; }
+    public Guid? FileId { get; set; } public Document? File { get; set; }
+    public Access Access { get; set; }
 }

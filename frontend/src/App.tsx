@@ -9,6 +9,7 @@ import { AccessBadge, Avatar, ErrorMessage, FileIcon, Logo, Modal, SharedAvatars
 import Login from './components/Login';
 import VersionHistory from './components/VersionHistory';
 import TrashPanel from './components/TrashPanel';
+import OrganizationDialog from './components/OrganizationDialog';
 import ShareDialog from './components/ShareDialog';
 import MoveDialog from './components/MoveDialog';
 import FilePreview from './features/file-preview/FilePreview';
@@ -17,6 +18,7 @@ import { useUploads } from './features/uploads/useUploads';
 
 const views: { id: View; name: string; description: string; icon: typeof Folder }[] = [
   { id: 'files', name: 'My Files', description: 'Your documents, organized and ready to share.', icon: Folder },
+  { id: 'teams', name: 'Team Folders', description: 'Shared documents for everyone and your department.', icon: UsersRound },
   { id: 'favorites', name: 'Favorites', description: 'Keep your starred files and folders close.', icon: Star },
   { id: 'shared', name: 'Shared With Me', description: 'A shared space for your team’s best work.', icon: UsersRound },
   { id: 'shared-by-me', name: 'Shared by me', description: 'Files and folders you own and share with your team.', icon: Share2 },
@@ -24,7 +26,7 @@ const views: { id: View; name: string; description: string; icon: typeof Folder 
   { id: 'trash', name: 'Trash', description: 'Deleted items are kept for 30 days. Automatic deletion is disabled.', icon: Trash2 },
   { id: 'audit', name: 'Audit Logs', description: 'A clear record of what happens in your workspace.', icon: Activity },
 ];
-type Dialog = { kind: 'create' } | { kind: 'rename' | 'delete' | 'move' | 'share' | 'versions'; resource: Resource } | { kind: 'help' };
+type Dialog = { kind: 'create' } | { kind: 'rename' | 'delete' | 'move' | 'share' | 'versions'; resource: Resource } | { kind: 'help' | 'organization' };
 const emptyExplorer: Explorer = { folderId: null, permissions: 0, breadcrumbs: [], items: [] };
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -72,7 +74,7 @@ export default function App() {
   }, [currentUser, folderId, preview, query, view, page]);
   useEffect(() => { void load(); return () => { loadSequence.current++; }; }, [load]);
   const navigate = (nextView: View, folder: string | null = null) => { setView(nextView); setPage(1); setFolderId(folder); setSearch(''); setQuery(''); setCategory('All files'); setSort(nextView === 'recent' ? 'modified' : 'name');  setSidebar(false); setMenu(null); };
-  const openFolder = (resource: Resource) => navigate(view === 'favorites' || view === 'shared-by-me' ? view : resource.ownerId === currentUser?.id ? view === 'shared' ? 'files' : view : 'shared', resource.id);
+  const openFolder = (resource: Resource) => navigate(resource.teamSpaceId ? 'teams' : view === 'favorites' || view === 'shared-by-me' ? view : resource.ownerId === currentUser?.id ? view === 'shared' ? 'files' : view : 'shared', resource.id);
   const openDialog = (next: Dialog) => { setDialog(next); setDialogError(''); setMenu(null); setInput(next.kind === 'rename' ? next.resource.name : ''); };
   const closeDialog = () => { if (!busy) { setDialog(null); setDialogError(''); } };
   const canWrite = has(data.permissions, WRITE) && !!data.folderId && !query && !preview && !busy;
@@ -121,9 +123,9 @@ export default function App() {
       {r.type === 'file' && <button role="menuitem" disabled={preview || busy} onClick={() => openDialog({ kind: 'versions', resource: r })}><Clock3 size={16} />Version history</button>}
       {r.type === 'folder' ? <button role="menuitem" onClick={() => openFolder(r)}><Folder size={16} />Open folder</button> : <button role="menuitem" onClick={() => void getDownload(r)} disabled={busy}><Download size={16} />Download</button>}
       <button role="menuitem" onClick={() => openDialog({ kind: 'share', resource: r })}><UsersRound size={16} />{has(r.permissions, SHARE) ? 'Share & manage access' : 'View access'}</button>
-      <div className="menu-divider" /><button role="menuitem" disabled={!has(r.permissions, WRITE) || preview || busy} onClick={() => openDialog({ kind: 'rename', resource: r })}><Pencil size={16} />Rename</button>
-      <button role="menuitem" disabled={r.ownerId !== currentUser?.id || preview || busy} onClick={() => openDialog({ kind: 'move', resource: r })}><FolderInput size={16} />Move to…</button>
-      <button role="menuitem" className="danger-text" disabled={!has(r.permissions, DELETE) || preview || busy} onClick={() => openDialog({ kind: 'delete', resource: r })}><Trash2 size={16} />Delete</button>
+      <div className="menu-divider" /><button role="menuitem" disabled={r.isTeamRoot || !has(r.permissions, WRITE) || preview || busy} onClick={() => openDialog({ kind: 'rename', resource: r })}><Pencil size={16} />Rename</button>
+      <button role="menuitem" disabled={r.isTeamRoot || (r.teamSpaceId ? !has(r.permissions, SHARE) : r.ownerId !== currentUser?.id) || preview || busy} onClick={() => openDialog({ kind: 'move', resource: r })}><FolderInput size={16} />Move to…</button>
+      <button role="menuitem" className="danger-text" disabled={r.isTeamRoot || !has(r.permissions, DELETE) || preview || busy} onClick={() => openDialog({ kind: 'delete', resource: r })}><Trash2 size={16} />Delete</button>
     </div>;
   }
   if (booting) return <div className="boot-screen"><Logo /><LoaderCircle className="spin" /><p>Opening your workspace…</p></div>;
@@ -132,7 +134,7 @@ export default function App() {
   return <div className="app-shell">
     {sidebar && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setSidebar(false)} />}
     <aside className={`sidebar ${sidebar ? 'sidebar-open' : ''}`}><Logo /><div className="workspace-switch"><span className="workspace-icon">A</span><div><strong>Acme Workspace</strong><span>Team document hub</span></div><ShieldCheck size={16} /></div><span className="nav-label">WORKSPACE</span><nav>{views.map(v => <button key={v.id} onClick={() => navigate(v.id)} className={view === v.id ? 'active' : ''}><v.icon size={19} strokeWidth={1.8} /><span>{v.name}</span>{view === v.id && <span className="nav-active-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="storage-heading"><HardDrive size={16} /><strong>Workspace capacity</strong><span>{formatSize(stats.usedBytes)}</span></div><p>Used by your workspace</p><div className="local-status"><span />{preview ? 'Design preview' : 'Local workspace'}<span className="version">v1.0</span></div></div></aside>
-    <div className="workspace-main"><header className="topbar"><button className="icon-button mobile-menu" onClick={() => setSidebar(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="global-search"><Search size={18} /><input ref={searchInput} value={search} onChange={e => { setSearch(e.target.value); if (view === 'audit') setView('files'); }} placeholder="Search your workspace…" aria-label="Search your workspace" />{search ? <button className="icon-button" onClick={() => setSearch('')} aria-label="Clear search"><X size={14} /></button> : <kbd>Ctrl K</kbd>}</div><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15} />Private workspace</span><span className="topbar-divider" /><div className="account-wrap"><button className="account-button" onClick={e => { e.stopPropagation(); setAccount(!account); setMenu(null); }} aria-expanded={account} aria-label="Account menu"><Avatar name={currentUser.name} /><div><strong>{currentUser.name}</strong><span>{preview ? 'Preview account' : currentUser.role}</span></div><ChevronDown size={14} /></button>{account && <div className="account-menu" onClick={e => e.stopPropagation()}><strong>{currentUser.name}</strong><span>{currentUser.email}</span><div className="menu-divider" /><button onClick={logout}><LogOut size={16} />{preview ? 'Back to sign in' : 'Sign out'}</button></div>}</div></div></header>
+    <div className="workspace-main"><header className="topbar"><button className="icon-button mobile-menu" onClick={() => setSidebar(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="global-search"><Search size={18} /><input ref={searchInput} value={search} onChange={e => { setSearch(e.target.value); if (view === 'audit') setView('files'); }} placeholder="Search your workspace…" aria-label="Search your workspace" />{search ? <button className="icon-button" onClick={() => setSearch('')} aria-label="Clear search"><X size={14} /></button> : <kbd>Ctrl K</kbd>}</div><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15} />Private workspace</span><span className="topbar-divider" /><div className="account-wrap"><button className="account-button" onClick={e => { e.stopPropagation(); setAccount(!account); setMenu(null); }} aria-expanded={account} aria-label="Account menu"><Avatar name={currentUser.name} /><div><strong>{currentUser.name}</strong><span>{preview ? 'Preview account' : currentUser.role + (currentUser.department ? ' · ' + currentUser.department : '')}</span></div><ChevronDown size={14} /></button>{account && <div className="account-menu" onClick={e => e.stopPropagation()}><strong>{currentUser.name}</strong><span>{currentUser.email}</span><div className="menu-divider" />{!preview && currentUser.role === 'Admin' && <button onClick={() => { setAccount(false); openDialog({ kind: 'organization' }); }}><UsersRound size={16} />Organization & Team Folders</button>}<button onClick={logout}><LogOut size={16} />{preview ? 'Back to sign in' : 'Sign out'}</button></div>}</div></div></header>
     {preview && <div className="preview-banner"><span><span className="preview-dot" />You’re exploring a read-only design preview.</span><button onClick={logout}>Sign in to your workspace<ArrowRight size={14} /></button></div>}
     <main className={`content ${dragging ? 'is-dragging' : ''}`} onDragEnter={e => { e.preventDefault(); if (e.dataTransfer.types.includes('Files') && canWrite) { dragCount.current++; setDragging(true); } }} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = canWrite ? 'copy' : 'none'; }} onDragLeave={e => { e.preventDefault(); dragCount.current = Math.max(0, dragCount.current - 1); if (!dragCount.current) setDragging(false); }} onDrop={e => { e.preventDefault(); dragCount.current = 0; setDragging(false); if (e.dataTransfer.files.length) void upload(e.dataTransfer.files); }}>
       {dragging && <div className="drag-overlay"><CloudUpload size={52} /><h2>Drop your files here</h2><p>Upload to {data.breadcrumbs.at(-1)?.name || 'this folder'}</p></div>}
@@ -153,6 +155,7 @@ export default function App() {
     {toast && <div className="toast" role="status"><span><Check size={15} /></span>{toast}<button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={15} /></button></div>}
     <UploadManager entries={uploads.entries} cancel={uploads.cancel} retry={uploads.retry} replace={uploads.replace} clearFinished={uploads.clearFinished} />
     {previewFile && <FilePreview key={previewFile.id} resource={previewFile} onClose={() => { setPreviewFile(null); void load(); }} />}
+    {dialog?.kind === 'organization' && <OrganizationDialog onClose={closeDialog} onChange={() => void load()} />}
     {dialog?.kind === 'share' && <ShareDialog resource={dialog.resource} users={users} currentUser={currentUser} preview={preview} onClose={closeDialog} onChange={() => void load()} />}
     {dialog?.kind === 'versions' && <VersionHistory key={dialog.resource.id} resource={dialog.resource} onClose={closeDialog} onChange={() => void load()} />}
     {dialog?.kind === 'move' && <MoveDialog resource={dialog.resource} onClose={closeDialog} onChange={() => { setToast('Item moved'); void load(); }} />}
